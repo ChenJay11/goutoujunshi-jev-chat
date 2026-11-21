@@ -1,15 +1,7 @@
-name: iOS source preview
+name: iOS unsigned IPA
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "integrations/jev_ios/**"
-      - ".github/workflows/ios-build.yml"
-  pull_request:
-    paths:
-      - "integrations/jev_ios/**"
-      - ".github/workflows/ios-build.yml"
 
 permissions:
   contents: read
@@ -22,25 +14,30 @@ jobs:
         working-directory: integrations/jev_ios
     steps:
       - uses: actions/checkout@v4
-      - name: Offline core and project checks
+      - name: Offline checks
         run: bash tools/check.sh
-      - name: Build companion app and keyboard for simulator
-        run: >-
-          xcodebuild -project GoutouJunshi.xcodeproj -scheme GoutouJunshi
-          -destination 'generic/platform=iOS Simulator'
-          -derivedDataPath build
-          CODE_SIGNING_ALLOWED=NO build
-      - name: Compile device targets without distribution signing
-        run: >-
-          xcodebuild -project GoutouJunshi.xcodeproj -scheme GoutouJunshi
-          -destination 'generic/platform=iOS'
-          -derivedDataPath build-device
-          CODE_SIGNING_ALLOWED=NO build
-      - name: Archive simulator app with executable permissions
-        run: ditto -c -k --keepParent build/Build/Products/Debug-iphonesimulator/GoutouJunshi.app build/goutoujunshi-ios-simulator-preview.zip
-      - name: Upload simulator app for development only
+      - name: Build device app without signing
+        run: |
+          xcodebuild -project GoutouJunshi.xcodeproj \
+            -scheme GoutouJunshi \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build-device \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+      - name: Package unsigned IPA
+        run: |
+          APP_PATH=$(find build-device/Build/Products -maxdepth 3 -type d -name "GoutouJunshi.app" | head -1)
+          echo "found app: $APP_PATH"
+          test -n "$APP_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qry goutoujunshi-unsigned.ipa Payload
+          ls -lh goutoujunshi-unsigned.ipa
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: goutoujunshi-ios-simulator-preview
-          path: integrations/jev_ios/build/goutoujunshi-ios-simulator-preview.zip
+          name: goutoujunshi-unsigned-ipa
+          path: integrations/jev_ios/goutoujunshi-unsigned.ipa
           if-no-files-found: error
